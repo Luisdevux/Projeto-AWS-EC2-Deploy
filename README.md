@@ -1,5 +1,9 @@
 # Projeto AWS EC2 - Automação de Deploy e Monitoramento com Notificações
 
+![AWS](https://img.shields.io/badge/AWS-EC2-orange)
+![Shell](https://img.shields.io/badge/Shell-Script-blue)
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+
 Este projeto demonstra a automação do deploy de uma página web em uma instância EC2 da AWS utilizando o recurso de **user-data**. Além da configuração automática do servidor NGINX, o projeto implementa um script de **monitoramento contínuo** da aplicação, com notificações enviadas em tempo real para um canal do Discord.
 
 O objetivo é garantir alta disponibilidade da página e rápida detecção de falhas, mostrando domínio das ferramentas fundamentais da AWS, Linux, NGINX e scripts automatizados.
@@ -39,10 +43,10 @@ A solução foi construída para ser executada automaticamente no primeiro boot 
 
 A seguir estão os parâmetros utilizados na criação da instância EC2:
 
-- **AMI**: Ubuntu Server 22.04 LTS (HVM), SSD Volume Type (x86);
+- **AMI**: Ubuntu Server 24.04 LTS (HVM), SSD Volume Type (x86);
 - **Tipo de instância**: t2.micro (elegível para o Free Tier);
 - **Armazenamento**: 8 GB SSD padrão;
-- **Par de chaves (SSH)**: `projeto-monitoramento.pem` (exemplo);
+- **Par de chaves (SSH)**: `projeto-monitoramento.pem` (exemplo de chave, coloque a sua);
 - **Rede**: VPC padrão ou personalizada;
 - **Subnet**: Pública (com acesso à internet);
 - **Endereço IP elástico (EIP)**: Associado para manter o mesmo IP público fixo;
@@ -282,3 +286,15 @@ else
 fi
 ```
 
+## Exemplos de Funcionamento:
+
+### Página Web Online
+![Página no ar](./img/OpenSourcePage.png)
+
+### Arquivo de Logs
+![Arquivo de Logs](./img/LogsAlert.png)
+
+### Alertas de Sucesso e Falhas no Discord
+![Alerta no Discord](./img/DiscordAlert.png)
+
+> ### Este projeto está licenciado sob a [Licença MIT](./LICENSE).
