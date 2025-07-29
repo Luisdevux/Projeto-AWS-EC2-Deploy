@@ -288,13 +288,24 @@ fi
 
 ## Exemplos de Funcionamento:
 
-### Página Web Online
+### 🖥️ Página Web Ativa (Deploy Realizado com Sucesso)
+
+- A página clonada do repositório é exibida corretamente ao acessar o IP público da instância.
+
 ![Página no ar](./img/OpenSourcePage.png)
 
-### Arquivo de Logs
+### 📄 Registro de Logs Locais
+
+- O script salva os logs de verificação no arquivo /var/log/meu_monitoramento.log, registrando tanto falhas quanto sucessos, com data e hora.
+
 ![Arquivo de Logs](./img/LogsAlert.png)
 
-### Alertas de Sucesso e Falhas no Discord
+### 📢 Notificações no Discord
+
+- Cada execução do script envia mensagens automáticas para um canal do Discord, notificando falhas (como servidor NGINX inativo ou erro de conexão) ou sucesso no acesso à página.
+
 ![Alerta no Discord](./img/DiscordAlert.png)
+
+---
 
 > ### Este projeto está licenciado sob a [Licença MIT](./LICENSE).
