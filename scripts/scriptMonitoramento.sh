@@ -10,7 +10,7 @@ fi
 # Variavel para definir ip da requisicao automaticamente
 IP_REQUEST=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
 # URL do WEBHOOK
-URL_WEBHOOK="URL DO SEU WEBHOOK DO DISCORD VAI AQUI"
+URL_WEBHOOK="https://discord.com/api/webhooks/SEU_WEBHOOK_AQUI"
 # Variavel para armazenar data e ser reutilizavel
 DATE=$(date '+%Y-%m-%d %H:%M:%S')
 

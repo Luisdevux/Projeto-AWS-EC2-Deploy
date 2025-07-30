@@ -51,8 +51,6 @@ A seguir estão os parâmetros utilizados na criação da instância EC2:
 - **Subnet**: Pública (com acesso à internet);
 - **Endereço IP elástico (EIP)**: Associado para manter o mesmo IP público fixo;
 - **User Data**: Script de automação completo utilizado no primeiro boot da máquina;
-- **Tag**: 
-  - `Name: instancia-monitoramento`
 
 Ao final da criação, um Elastic IP foi associado manualmente à instância para garantir um endereço público estático e permitir o monitoramento constante via URL.
 
@@ -66,6 +64,119 @@ O grupo de segurança foi configurado com as seguintes regras de entrada:
 | HTTP       | TCP       | 80    | 0.0.0.0/0         | Acesso público à página|
 
 > ⚠️ Recomendado: restringir o acesso SSH apenas ao seu IP para maior segurança.
+
+## 🔧 Etapa extra: Permitindo acesso ao IP da instância sem token (IMDSv1), para obter IP automaticamente
+
+Os scripts utilizados neste projeto fazem requisição ao IP público da instância utilizando o serviço de metadados da AWS (IMDS), através do seguinte endereço:
+
+```bash
+http://169.254.169.254/latest/meta-data/public-ipv4
+```
+
+Por padrão, algumas instâncias exigem token (IMDSv2), o que bloqueia esse acesso direto via `curl`. Para permitir que o script funcione normalmente, é necessário ajustar a política de metadados da instância EC2, tornando o uso de token **opcional**.
+
+---
+
+### ✅ Como permitir IMDSv1 (sem token) no Console da AWS
+
+1. Acesse o [Console da AWS](https://console.aws.amazon.com/)
+2. Vá até **EC2 > Instâncias**
+3. Selecione a instância EC2 usada no projeto
+4. Clique em **Ações > Configurações de instância > Modificar opções de metadados da instância**
+5. Na opção **IMDSv2** altere para **Opcional**
+6. Clique em **Salvar** para aplicar as alterações e estará configurado!
+
+## 📡 Script de Monitoramento (Webhook Discord)
+
+Este script é executado periodicamente (a cada minuto) para verificar o funcionamento do servidor e da aplicação hospedada via Nginx. Em caso de sucesso ou falha, ele envia logs e notificações para um canal do Discord usando um Webhook.
+
+### Caminho onde é salvo:
+`/usr/local/bin/scriptMonitora.sh`
+
+### Funcionalidades:
+
+- Verifica se o serviço Nginx está ativo;
+- Verifica se a página está respondendo (HTTP 200);
+- Emite mensagens de erro para casos de falha (Nginx inativo, status HTTP diferente de 200, falha de conexão);
+- Registra os resultados em um log local (`/var/log/meu_monitoramento.log`);
+- Envia alertas automaticamente para um canal Discord via webhook.
+
+### Código do Script:
+
+```bash
+#!/bin/bash
+
+# Variavel que define o caminho de salvamento dos logs
+LOG_FILE="/var/log/meu_monitoramento.log"
+
+if [ ! -f  "$LOG_FILE" ]; then
+    touch "$LOG_FILE"
+fi
+
+# Variavel para definir ip da requisicao automaticamente
+IP_REQUEST=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+# URL do WEBHOOK
+URL_WEBHOOK="https://discord.com/api/webhooks/SEU_WEBHOOK_AQUI"
+# Variavel para armazenar data e ser reutilizavel
+DATE=$(date '+%Y-%m-%d %H:%M:%S')
+
+enviar_discord() {
+  local MESSAGE=$1
+  curl -s -H "Content-Type: application/json" \
+       -X POST \
+       -d "{\"content\": \"\`\`\`$MESSAGE\`\`\`\"}" \
+       "$URL_WEBHOOK"
+}
+
+# Verificacao do status do serviço nginx
+NGINX_STATUS=$(systemctl is-active nginx)
+
+if [ "$NGINX_STATUS" != "active" ]; then
+    MSG="$DATE - ERRO: Nginx não está rodando!Verifique! Status atual: $NGINX_STATUS"
+    echo "$MSG" >> "$LOG_FILE"
+    enviar_discord "$MSG"
+    exit 1
+else
+    MSG="$DATE - SUCESSO: Nginx está rodando corretamente. Status: $NGINX_STATUS"
+    echo "$MSG" >> "$LOG_FILE"
+    enviar_discord "$MSG"
+fi
+
+# Variavel que ira guardar o resultado da requisicao
+STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 "http://$IP_REQUEST")
+# Variavel para verificar sucesso de conexão
+CURL_EXIT_CODE=$?
+
+# Verificacao de conexao
+if [ $CURL_EXIT_CODE -ne 0 ]; then
+    MSG="$DATE - ERRO: Falha ao conectar na URL! curl retornou código de erro $CURL_EXIT_CODE"
+    echo "$MSG" >> "$LOG_FILE"
+    enviar_discord "$MSG"
+    exit 1
+elif [ "$STATUS_CODE" = "000" ]; then
+    MSG="$DATE - ERRO: Nenhuma resposta HTTP recebida (status 000). Possível falha de conexão."
+    echo "$MSG" >> "$LOG_FILE"
+    enviar_discord "$MSG"
+    exit 1
+fi
+
+# Verificacao das requisicoes
+if [ "$STATUS_CODE" -eq 200 ]; then
+    MSG="$DATE - SUCESSO: Requisição bem sucedida! Status retornado: $STATUS_CODE"
+    echo "$MSG" >> "$LOG_FILE"
+    enviar_discord "$MSG"
+elif [ "$STATUS_CODE" -eq 500 ]; then
+    MSG="$DATE - ERRO: Erro interno do servidor... Status retornado: $STATUS_CODE"
+    echo "$MSG" >> "$LOG_FILE"
+    enviar_discord "$MSG"
+    exit 1
+else
+    MSG="$DATE - ERRO: Falha ao executar requisição! Status retornado: $STATUS_CODE"
+    echo "$MSG" >> "$LOG_FILE"
+    enviar_discord "$MSG"
+    exit 1
+fi
+```
 
 ## 📝 Script de Inicialização (User Data)
 
@@ -126,7 +237,7 @@ fi
 # Variavel para definir ip da requisicao automaticamente
 IP_REQUEST=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
 # URL do WEBHOOK
-URL_WEBHOOK="URL DO SEU WEBHOOK DO DISCORD VAI AQUI"
+URL_WEBHOOK="https://discord.com/api/webhooks/SEU_WEBHOOK_AQUI"
 # Variavel para armazenar data e ser reutilizavel
 DATE=$(date '+%Y-%m-%d %H:%M:%S')
 
@@ -194,99 +305,8 @@ chmod +x /usr/local/bin/scriptMonitora.sh
 # Automatiza o processo de monitoramento com crontab
 (crontab -l 2>/dev/null; echo "* * * * * /usr/local/bin/scriptMonitora.sh") | crontab -
 ```
-## 📡 Script de Monitoramento com Webhook (Discord)
 
-Este script é executado periodicamente (a cada minuto) para verificar o funcionamento do servidor e da aplicação hospedada via Nginx. Em caso de sucesso ou falha, ele envia logs e notificações para um canal do Discord usando um Webhook.
-
-### Caminho onde é salvo:
-`/usr/local/bin/scriptMonitora.sh`
-
-### Funcionalidades:
-
-- Verifica se o serviço Nginx está ativo;
-- Verifica se a página está respondendo (HTTP 200);
-- Emite mensagens de erro para casos de falha (Nginx inativo, status HTTP diferente de 200, falha de conexão);
-- Registra os resultados em um log local (`/var/log/meu_monitoramento.log`);
-- Envia alertas automaticamente para um canal Discord via webhook.
-
-### Código do Script:
-
-```bash
-#!/bin/bash
-
-# Variavel que define o caminho de salvamento dos logs
-LOG_FILE="/var/log/meu_monitoramento.log"
-
-if [ ! -f  "$LOG_FILE" ]; then
-    touch "$LOG_FILE"
-fi
-
-# Variavel para definir ip da requisicao automaticamente
-IP_REQUEST=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
-# URL do WEBHOOK
-URL_WEBHOOK="URL DO SEU WEBHOOK DO DISCORD VAI AQUI"
-# Variavel para armazenar data e ser reutilizavel
-DATE=$(date '+%Y-%m-%d %H:%M:%S')
-
-enviar_discord() {
-  local MESSAGE=$1
-  curl -s -H "Content-Type: application/json" \
-       -X POST \
-       -d "{\"content\": \"\`\`\`$MESSAGE\`\`\`\"}" \
-       "$URL_WEBHOOK"
-}
-
-# Verificacao do status do serviço nginx
-NGINX_STATUS=$(systemctl is-active nginx)
-
-if [ "$NGINX_STATUS" != "active" ]; then
-    MSG="$DATE - ERRO: Nginx não está rodando!Verifique! Status atual: $NGINX_STATUS"
-    echo "$MSG" >> "$LOG_FILE"
-    enviar_discord "$MSG"
-    exit 1
-else
-    MSG="$DATE - SUCESSO: Nginx está rodando corretamente. Status: $NGINX_STATUS"
-    echo "$MSG" >> "$LOG_FILE"
-    enviar_discord "$MSG"
-fi
-
-# Variavel que ira guardar o resultado da requisicao
-STATUS_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 "http://$IP_REQUEST")
-# Variavel para verificar sucesso de conexão
-CURL_EXIT_CODE=$?
-
-# Verificacao de conexao
-if [ $CURL_EXIT_CODE -ne 0 ]; then
-    MSG="$DATE - ERRO: Falha ao conectar na URL! curl retornou código de erro $CURL_EXIT_CODE"
-    echo "$MSG" >> "$LOG_FILE"
-    enviar_discord "$MSG"
-    exit 1
-elif [ "$STATUS_CODE" = "000" ]; then
-    MSG="$DATE - ERRO: Nenhuma resposta HTTP recebida (status 000). Possível falha de conexão."
-    echo "$MSG" >> "$LOG_FILE"
-    enviar_discord "$MSG"
-    exit 1
-fi
-
-# Verificacao das requisicoes
-if [ "$STATUS_CODE" -eq 200 ]; then
-    MSG="$DATE - SUCESSO: Requisição bem sucedida! Status retornado: $STATUS_CODE"
-    echo "$MSG" >> "$LOG_FILE"
-    enviar_discord "$MSG"
-elif [ "$STATUS_CODE" -eq 500 ]; then
-    MSG="$DATE - ERRO: Erro interno do servidor... Status retornado: $STATUS_CODE"
-    echo "$MSG" >> "$LOG_FILE"
-    enviar_discord "$MSG"
-    exit 1
-else
-    MSG="$DATE - ERRO: Falha ao executar requisição! Status retornado: $STATUS_CODE"
-    echo "$MSG" >> "$LOG_FILE"
-    enviar_discord "$MSG"
-    exit 1
-fi
-```
-
-## Exemplos de Funcionamento:
+## 🧪 Exemplos de Funcionamento:
 
 ### 🖥️ Página Web Ativa (Deploy Realizado com Sucesso)
 
